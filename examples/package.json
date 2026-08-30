@@ -1,0 +1,25 @@
+{
+  "name": "@flow-model-generator/example-taf",
+  "version": "0.1.0",
+  "description": "Example Test Automation Framework using Playwright",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "test:debug": "playwright test --debug"
+  },
+  "keywords": [
+    "playwright",
+    "test-automation",
+    "flow-model"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@playwright/test": "^1.40.1",
+    "@types/node": "^20.10.0",
+    "typescript": "^5.3.3"
+  },
+  "dependencies": {}
+}

@@ -1,0 +1,25 @@
+{
+  "name": "@flow-model-generator/generator",
+  "version": "0.1.0",
+  "description": "Flow Model generator for test automation frameworks",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node dist/index.js"
+  },
+  "keywords": [
+    "flow-model",
+    "test-automation",
+    "page-object-model",
+    "playwright"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "typescript": "^5.3.3"
+  },
+  "dependencies": {}
+}
