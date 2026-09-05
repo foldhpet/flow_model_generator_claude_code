@@ -30,3 +30,7 @@ When starting the implementation, create your first test, then start moving out 
 
 Test Scripts
 - Test Script
+
+Source information:
+https://www.amazon.com/PNSQC-2022-Proceedings-Evolution-Quality/dp/B0BMT28477
+https://pub-5e725122191f422092d6fb4c68bc26b3.r2.dev/archives/pnsqc2022.pdf
