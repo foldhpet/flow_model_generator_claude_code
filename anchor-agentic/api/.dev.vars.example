@@ -1,0 +1,10 @@
+SUPABASE_URL=https://<project-ref>.supabase.co
+SUPABASE_ANON_KEY=
+SUPABASE_SERVICE_ROLE_KEY=
+
+# Only needed for test/rls/sandboxItems.rls.test.ts — two already-registered,
+# already-confirmed accounts. See that file's header comment.
+RLS_TEST_USER_A_EMAIL=
+RLS_TEST_USER_A_PASSWORD=
+RLS_TEST_USER_B_EMAIL=
+RLS_TEST_USER_B_PASSWORD=
