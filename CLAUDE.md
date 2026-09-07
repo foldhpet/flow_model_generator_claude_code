@@ -1,94 +1,73 @@
-# Flow Model Generator - Claude Code
+# AnchorAgentic.io
 
 ## Project Purpose
 
-This project demonstrates how to build a **Flow Model generator** for test automation purposes. The Flow Model generator automates the creation of reusable test automation components that follow industry-leading design patterns and architectural principles.
+This repository builds **AnchorAgentic.io**, a free, community-driven platform where individuals define **Roles, Tasks, Agents, Skills, and Workflows** for agentic software development. Users start from proven templates, refine them hands-on in a personal Sandbox, and publish their best work to a public Marketplace so the whole community gets better at building software with AI together.
 
-The primary goal is to provide a tool that enables test automation engineers to:
-- Efficiently generate Flow Models for test scripts
-- Maintain separation of concerns between UI elements and user actions
-- Build scalable Test Automation Frameworks (TAF) following the Tri-Layer Testing Architecture
+The platform is intentionally lightweight and community/passion-project scoped — not an enterprise product. There is no monetization; cloning is always free.
 
-## Core Concepts
+**Reference docs (read these before making product/architecture decisions):**
+- `docs/INITIAL-CONCEPT.md` — the original problem statement and domain vocabulary as captured with the Product Owner Agent.
+- `docs/PRODUCT-CONCEPT.md` — full product concept: personas, journeys, features, roadmap, NFRs, success metrics.
+- `docs/ARCHITECTURE.md` — system architecture, KPIs, and the technical stack rationale.
+- `docs/USER-STORIES.md` — epics and user stories (with acceptance criteria) derived from the product concept.
 
-### Flow Model Pattern
+## Core Domain Model
 
-The Flow Model Pattern is an enhancement of the traditional Page Object Model (POM) that addresses two key limitations:
+- **Role** — a job function in the SDLC (e.g., Business Analyst, Test Analyst). An Agent is built to fulfill exactly one Role.
+- **Task** — owned by a single Role; the unit of work an Agent performs.
+- **Agent** — fulfills one Role and can perform multiple Tasks belonging to that Role. Maps to a real Claude Code sub-agent definition.
+- **Skill** — a genuine Claude Code Skill, buildable through the platform and independently invocable (not owned by a Role).
+- **Workflow** — an ordered chain of Tasks (tied to Roles) that can also directly invoke Skills and/or Agents.
 
-1. **Single Responsibility Principle**: Traditional Page Object Models often violate SRP by combining element locators with action methods, leading to bloated, hard-to-maintain classes.
-2. **Tester's Perspective**: POM has a developer-centric design mindset, whereas the Flow Model Pattern aligns with how test automation engineers naturally think about user interactions.
+Everything above is **clonable into a Sandbox, version-controlled, publishable to the Marketplace, and rateable (1-5, registered users only)**.
 
-#### Key Principles:
+## Access Model
 
-- **Page Models**: Store only UI elements and their locators
-- **Flow Models**: Store user actions performed against elements and combined sequences of user actions (user flows) that accomplish business goals
+- **Anonymous visitors**: Marketplace browsing only (read published items + ratings). No Sandbox access.
+- **Registered users**: Marketplace, plus **My Sandbox** (personal, version-controlled, read/write) and **All Sandbox** (everyone's in-progress work, read-only — Sandbox items are never private by design).
+- Publishing moves an item from a Sandbox into the Marketplace. Cloning copies a Marketplace (or another user's Sandbox) item into your own Sandbox.
 
-This separation enables better code reuse, clearer intent in test scripts, and easier maintenance as applications evolve.
+## Architecture
 
-**Reference**: https://www.peterfoldhazi.com/flow-model-pattern
+Serverless, edge-first stack chosen to stay near $0/month and under a hard $20/month hosting ceiling (see `docs/ARCHITECTURE.md`):
 
-### Tri-Layer Testing Architecture
+- **`anchor-agentic/web`** — SvelteKit frontend (Cloudflare Pages target). Server-rendered Marketplace, auth pages (`/register`, `/login`, `/logout`), and Sandbox pages. Talks to the API over `PUBLIC_API_URL`, never calls Supabase directly for anything the API already exposes.
+- **`anchor-agentic/api`** — Hono API on Cloudflare Workers. Owns `/api/v1/marketplace/*` (public reads) and `/api/v1/sandbox/*` (auth-required), enforces ownership checks server-side, and never trusts client-supplied `owner_id`.
+- **`anchor-agentic/supabase`** — Postgres schema + migrations for the linked Supabase cloud project. Supabase Auth is the identity provider; Postgres Row-Level Security is a second, independent enforcement layer behind the API's own checks (never the only enforcement layer).
+- Export/artifact storage (Cloudflare R2) and the `.claude`-folder export mapping are part of the target design but not yet implemented — see `docs/ARCHITECTURE.md`'s Export Mapping Service section before building that feature.
 
-The Tri-Layer Testing Architecture provides a structured blueprint for designing any Test Automation Solution (TAS). It defines three distinct layers, each with specific responsibilities:
-
-#### Layer 1: Core Libraries
-Independent, reusable libraries that form the foundation of the framework. These are designed to be tool-agnostic and portable across projects.
-
-**Example libraries:**
-- Base Test
-- Base Page
-- User Action
-- Logger
-- Reporter
-
-#### Layer 2: Business Logic
-Application-specific libraries that implement domain-relevant behavior and use the core libraries.
-
-**Example libraries:**
-- Page Model
-- Flow Model
-- Environment Properties
-
-#### Layer 3: Test Scripts
-Runnable test scripts that leverage both business logic and core libraries to validate application behavior.
-
-**Example components:**
-- Test Script
-
-#### Key Advantages:
-
-1. **Scalability**: Core libraries can be reused across multiple projects, reducing development time for new TAFs.
-2. **Maintainability**: Clear separation of concerns makes the framework easier to update and extend.
-3. **Abstraction**: Initial architecture design remains tool-agnostic before concrete tools are selected.
-4. **Incremental Build**: Start with the first test, then progressively extract logic into core and business logic layers.
-
-## Development Workflow
-
-When implementing a TAF following this architecture:
-
-1. **Design Phase**: Create an abstract, tool-agnostic Test Automation Architecture
-2. **Foundation Phase**: Identify and select core tools (browser automation, test harness, etc.)
-3. **Implementation Phase**:
-   - Write your first test script
-   - Extract reusable logic into business logic layer
-   - Promote proven patterns into core libraries
-   - Progressively add capabilities as more tests are created
+Both `web` and `api` are self-contained npm projects (no monorepo tooling) — see each project's own `package.json`/`wrangler.toml` for scripts, and its `.env.example`/`.dev.vars.example` for required configuration.
 
 ## Project Structure
 
 ```
 flow_model_generator_claude_code/
-├── README.md              # Project overview
-├── CLAUDE.md              # This file
-└── docs/
-    ├── FLOW-MODEL.md      # Flow Model Pattern documentation
-    └── TRI-LAYER.md       # Tri-Layer Architecture documentation
+├── CLAUDE.md                     # This file
+├── docs/
+│   ├── INITIAL-CONCEPT.md
+│   ├── PRODUCT-CONCEPT.md
+│   ├── ARCHITECTURE.md
+│   └── USER-STORIES.md
+├── anchor-agentic/                # The actual product
+│   ├── web/                       # SvelteKit frontend
+│   ├── api/                       # Hono API on Cloudflare Workers
+│   └── supabase/                  # Schema + migrations, linked to the cloud project
+├── generator/                      # Legacy: earlier Flow Model generator experiment
+└── example-taf/                    # Legacy: earlier Flow Model / Tri-Layer TAF example
 ```
+
+`generator/` and `example-taf/` are earlier work exploring a Flow Model test-automation generator and are **not** part of AnchorAgentic.io — treat them as historical/reference material, not a target for new feature work, unless explicitly asked.
+
+## Development Workflow
+
+1. Ground any new feature work in `docs/USER-STORIES.md` (find or add the relevant epic/story and its acceptance criteria) before writing code.
+2. Implement against the layer boundaries above: UI in `web`, business logic and authorization in `api`, schema/RLS in `supabase`.
+3. Write/extend tests alongside the change: Vitest (`api`, including a dedicated `test/rls/` suite that talks to Supabase directly to prove RLS independent of the Worker) and Playwright (`web`, in `e2e/`).
+4. Re-check the relevant acceptance criteria against the implementation before considering a story done.
 
 ## Collaboration Notes
 
-When working with this codebase:
-- Reference the Flow Model Pattern documentation when designing new Flow Models
-- Ensure all components align with the Tri-Layer Architecture
-- Prioritize code generation tools that respect the separation between Page Models and Flow Models
-- Keep core libraries portable and tool-independent
+- Never paste Supabase secrets (URL, anon key, service role key, DB password, access tokens) into chat. Credentials are obtained via `supabase login`/`supabase link` run by the user, or via gitignored `api/.dev.vars` / `web/.env` populated outside the chat channel.
+- Test fixtures/emails should use a real, MX-valid domain (e.g. `mailinator.com`) — Supabase Auth's signup validator rejects unresolvable domains including `@example.com`.
+- Keep the Sandbox-visibility rule intact: Sandbox items are never private — there is no private/hidden mode, by product design.
