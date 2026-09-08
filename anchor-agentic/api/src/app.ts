@@ -11,6 +11,7 @@ import { agentsRouter } from './routes/agents'
 import { skillsRouter } from './routes/skills'
 import { workflowsRouter } from './routes/workflows'
 import { libraryRouter } from './routes/library'
+import { cloneRouter } from './routes/clone'
 
 export function createApp() {
   const app = new Hono<AppEnv>()
@@ -29,6 +30,7 @@ export function createApp() {
   app.route('/api/v1/skills', skillsRouter)
   app.route('/api/v1/workflows', workflowsRouter)
   app.route('/api/v1/library', libraryRouter)
+  app.route('/api/v1/clone', cloneRouter)
 
   return app
 }

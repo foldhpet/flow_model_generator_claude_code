@@ -1,7 +1,9 @@
-import { error, fail } from '@sveltejs/kit';
+import { error, fail, redirect } from '@sveltejs/kit';
 import { ApiError, apiRequest } from '$lib/api/client';
 import type {
 	Agent,
+	CloneResult,
+	Provenance,
 	Role,
 	Skill,
 	Task,
@@ -26,21 +28,32 @@ export const load: PageServerLoad = async ({ params, locals, fetch, url }) => {
 			accessToken,
 			fetchFn: fetch
 		});
-		const [{ steps }, { tasks }, { agents }, { skills }, { roles }, { versions, total: versionsTotal }] =
-			await Promise.all([
-				apiRequest<{ steps: WorkflowStep[] }>(`/api/v1/workflows/${params.id}/steps`, {
-					accessToken,
-					fetchFn: fetch
-				}),
-				apiRequest<{ tasks: Task[] }>('/api/v1/tasks', { accessToken, fetchFn: fetch }),
-				apiRequest<{ agents: Agent[] }>('/api/v1/agents', { accessToken, fetchFn: fetch }),
-				apiRequest<{ skills: Skill[] }>('/api/v1/skills', { accessToken, fetchFn: fetch }),
-				apiRequest<{ roles: Role[] }>('/api/v1/roles', { accessToken, fetchFn: fetch }),
-				apiRequest<{ versions: VersionSnapshot[]; total: number }>(
-					`/api/v1/library/WORKFLOW/${params.id}/versions?page=${versionsPage}&pageSize=${VERSIONS_PAGE_SIZE}`,
-					{ accessToken, fetchFn: fetch }
-				)
-			]);
+		const [
+			{ steps },
+			{ tasks },
+			{ agents },
+			{ skills },
+			{ roles },
+			{ versions, total: versionsTotal },
+			{ provenance, cloneCount }
+		] = await Promise.all([
+			apiRequest<{ steps: WorkflowStep[] }>(`/api/v1/workflows/${params.id}/steps`, {
+				accessToken,
+				fetchFn: fetch
+			}),
+			apiRequest<{ tasks: Task[] }>('/api/v1/tasks', { accessToken, fetchFn: fetch }),
+			apiRequest<{ agents: Agent[] }>('/api/v1/agents', { accessToken, fetchFn: fetch }),
+			apiRequest<{ skills: Skill[] }>('/api/v1/skills', { accessToken, fetchFn: fetch }),
+			apiRequest<{ roles: Role[] }>('/api/v1/roles', { accessToken, fetchFn: fetch }),
+			apiRequest<{ versions: VersionSnapshot[]; total: number }>(
+				`/api/v1/library/WORKFLOW/${params.id}/versions?page=${versionsPage}&pageSize=${VERSIONS_PAGE_SIZE}`,
+				{ accessToken, fetchFn: fetch }
+			),
+			apiRequest<{ provenance: Provenance | null; cloneCount: number }>(`/api/v1/clone/WORKFLOW/${params.id}`, {
+				accessToken,
+				fetchFn: fetch
+			})
+		]);
 
 		const taskById = new Map(tasks.map((t) => [t.id, t]));
 		const agentById = new Map(agents.map((a) => [a.id, a]));
@@ -72,7 +85,9 @@ export const load: PageServerLoad = async ({ params, locals, fetch, url }) => {
 			versions,
 			versionsTotal,
 			versionsPage,
-			versionsPageSize: VERSIONS_PAGE_SIZE
+			versionsPageSize: VERSIONS_PAGE_SIZE,
+			provenance,
+			cloneCount
 		};
 	} catch (err) {
 		if (err instanceof ApiError && err.status === 404) throw error(404, 'Workflow not found');
@@ -213,5 +228,20 @@ export const actions: Actions = {
 			throw err;
 		}
 		return { success: true };
+	},
+
+	clone: async ({ params, locals, fetch }) => {
+		let cloned: CloneResult;
+		try {
+			({ cloned } = await apiRequest<{ cloned: CloneResult }>(`/api/v1/clone/WORKFLOW/${params.id}`, {
+				method: 'POST',
+				accessToken: locals.session?.access_token,
+				fetchFn: fetch
+			}));
+		} catch (err) {
+			if (err instanceof ApiError) return fail(err.status, { error: err.message });
+			throw err;
+		}
+		throw redirect(303, `/workflows/${cloned.id}`);
 	}
 };

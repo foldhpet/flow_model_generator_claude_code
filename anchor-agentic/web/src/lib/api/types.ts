@@ -112,3 +112,18 @@ export interface VersionSnapshot {
 	created_by: string;
 	created_at: string;
 }
+
+export type CloneItemType = 'AGENT' | 'SKILL' | 'WORKFLOW';
+
+export interface CloneResult {
+	item_type: CloneItemType;
+	id: string;
+}
+
+export interface Provenance {
+	source_item_type: CloneItemType;
+	source_item_id: string;
+	source_name: string | null;
+	source_status: DomainStatus | null;
+	cloned_at: string;
+}

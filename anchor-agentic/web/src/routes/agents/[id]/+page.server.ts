@@ -1,6 +1,14 @@
-import { error, fail } from '@sveltejs/kit';
+import { error, fail, redirect } from '@sveltejs/kit';
 import { ApiError, apiRequest } from '$lib/api/client';
-import type { Agent, AgentTaskAssignment, Role, Task, VersionSnapshot } from '$lib/api/types';
+import type {
+	Agent,
+	AgentTaskAssignment,
+	CloneResult,
+	Provenance,
+	Role,
+	Task,
+	VersionSnapshot
+} from '$lib/api/types';
 import type { Actions, PageServerLoad } from './$types';
 
 const VERSIONS_PAGE_SIZE = 10;
@@ -13,18 +21,23 @@ export const load: PageServerLoad = async ({ params, locals, fetch, url }) => {
 			accessToken,
 			fetchFn: fetch
 		});
-		const [{ role }, { tasks }, { assignments }, { versions, total: versionsTotal }] = await Promise.all([
-			apiRequest<{ role: Role }>(`/api/v1/roles/${agent.role_id}`, { accessToken, fetchFn: fetch }),
-			apiRequest<{ tasks: Task[] }>(`/api/v1/tasks?role_id=${agent.role_id}`, { accessToken, fetchFn: fetch }),
-			apiRequest<{ assignments: AgentTaskAssignment[] }>(`/api/v1/agents/${params.id}/tasks`, {
-				accessToken,
-				fetchFn: fetch
-			}),
-			apiRequest<{ versions: VersionSnapshot[]; total: number }>(
-				`/api/v1/library/AGENT/${params.id}/versions?page=${versionsPage}&pageSize=${VERSIONS_PAGE_SIZE}`,
-				{ accessToken, fetchFn: fetch }
-			)
-		]);
+		const [{ role }, { tasks }, { assignments }, { versions, total: versionsTotal }, { provenance, cloneCount }] =
+			await Promise.all([
+				apiRequest<{ role: Role }>(`/api/v1/roles/${agent.role_id}`, { accessToken, fetchFn: fetch }),
+				apiRequest<{ tasks: Task[] }>(`/api/v1/tasks?role_id=${agent.role_id}`, { accessToken, fetchFn: fetch }),
+				apiRequest<{ assignments: AgentTaskAssignment[] }>(`/api/v1/agents/${params.id}/tasks`, {
+					accessToken,
+					fetchFn: fetch
+				}),
+				apiRequest<{ versions: VersionSnapshot[]; total: number }>(
+					`/api/v1/library/AGENT/${params.id}/versions?page=${versionsPage}&pageSize=${VERSIONS_PAGE_SIZE}`,
+					{ accessToken, fetchFn: fetch }
+				),
+				apiRequest<{ provenance: Provenance | null; cloneCount: number }>(`/api/v1/clone/AGENT/${params.id}`, {
+					accessToken,
+					fetchFn: fetch
+				})
+			]);
 		const assignedTaskIds = new Set(assignments.map((a) => a.task_id));
 		return {
 			agent,
@@ -35,7 +48,9 @@ export const load: PageServerLoad = async ({ params, locals, fetch, url }) => {
 			versions,
 			versionsTotal,
 			versionsPage,
-			versionsPageSize: VERSIONS_PAGE_SIZE
+			versionsPageSize: VERSIONS_PAGE_SIZE,
+			provenance,
+			cloneCount
 		};
 	} catch (err) {
 		if (err instanceof ApiError && err.status === 404) throw error(404, 'Agent not found');
@@ -112,5 +127,20 @@ export const actions: Actions = {
 			throw err;
 		}
 		return { success: true };
+	},
+
+	clone: async ({ params, locals, fetch }) => {
+		let cloned: CloneResult;
+		try {
+			({ cloned } = await apiRequest<{ cloned: CloneResult }>(`/api/v1/clone/AGENT/${params.id}`, {
+				method: 'POST',
+				accessToken: locals.session?.access_token,
+				fetchFn: fetch
+			}));
+		} catch (err) {
+			if (err instanceof ApiError) return fail(err.status, { error: err.message });
+			throw err;
+		}
+		throw redirect(303, `/agents/${cloned.id}`);
 	}
 };

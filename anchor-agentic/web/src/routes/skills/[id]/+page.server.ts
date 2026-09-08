@@ -1,6 +1,6 @@
-import { error, fail } from '@sveltejs/kit';
+import { error, fail, redirect } from '@sveltejs/kit';
 import { ApiError, apiRequest } from '$lib/api/client';
-import type { Skill, VersionSnapshot } from '$lib/api/types';
+import type { CloneResult, Provenance, Skill, VersionSnapshot } from '$lib/api/types';
 import type { Actions, PageServerLoad } from './$types';
 
 const VERSIONS_PAGE_SIZE = 10;
@@ -9,12 +9,16 @@ export const load: PageServerLoad = async ({ params, locals, fetch, url }) => {
 	const accessToken = locals.session?.access_token;
 	const versionsPage = Math.max(1, Number.parseInt(url.searchParams.get('vpage') ?? '1', 10) || 1);
 	try {
-		const [{ skill }, { versions, total: versionsTotal }] = await Promise.all([
+		const [{ skill }, { versions, total: versionsTotal }, { provenance, cloneCount }] = await Promise.all([
 			apiRequest<{ skill: Skill }>(`/api/v1/skills/${params.id}`, { accessToken, fetchFn: fetch }),
 			apiRequest<{ versions: VersionSnapshot[]; total: number }>(
 				`/api/v1/library/SKILL/${params.id}/versions?page=${versionsPage}&pageSize=${VERSIONS_PAGE_SIZE}`,
 				{ accessToken, fetchFn: fetch }
-			)
+			),
+			apiRequest<{ provenance: Provenance | null; cloneCount: number }>(`/api/v1/clone/SKILL/${params.id}`, {
+				accessToken,
+				fetchFn: fetch
+			})
 		]);
 		return {
 			skill,
@@ -22,7 +26,9 @@ export const load: PageServerLoad = async ({ params, locals, fetch, url }) => {
 			versions,
 			versionsTotal,
 			versionsPage,
-			versionsPageSize: VERSIONS_PAGE_SIZE
+			versionsPageSize: VERSIONS_PAGE_SIZE,
+			provenance,
+			cloneCount
 		};
 	} catch (err) {
 		if (err instanceof ApiError && err.status === 404) throw error(404, 'Skill not found');
@@ -73,5 +79,20 @@ export const actions: Actions = {
 			throw err;
 		}
 		return { success: true };
+	},
+
+	clone: async ({ params, locals, fetch }) => {
+		let cloned: CloneResult;
+		try {
+			({ cloned } = await apiRequest<{ cloned: CloneResult }>(`/api/v1/clone/SKILL/${params.id}`, {
+				method: 'POST',
+				accessToken: locals.session?.access_token,
+				fetchFn: fetch
+			}));
+		} catch (err) {
+			if (err instanceof ApiError) return fail(err.status, { error: err.message });
+			throw err;
+		}
+		throw redirect(303, `/skills/${cloned.id}`);
 	}
 };

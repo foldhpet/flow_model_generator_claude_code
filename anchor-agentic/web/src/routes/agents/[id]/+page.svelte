@@ -16,6 +16,27 @@
 	<p role="alert">{form.error}</p>
 {/if}
 
+{#if data.provenance}
+	<p>
+		Cloned from
+		{#if data.provenance.source_name}
+			<a href="/agents/{data.provenance.source_item_id}">{data.provenance.source_name}</a>
+		{:else}
+			a since-removed item
+		{/if}
+	</p>
+{/if}
+
+{#if data.agent.status === 'Published'}
+	<form method="POST" action="?/clone" use:enhance>
+		<button type="submit">Clone into My Sandbox</button>
+	</form>
+{/if}
+
+{#if data.isOwner}
+	<p>Cloned {data.cloneCount} times</p>
+{/if}
+
 {#if data.isOwner && data.agent.status !== 'Archived'}
 	<form
 		method="POST"
