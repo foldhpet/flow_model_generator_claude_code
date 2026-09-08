@@ -10,9 +10,15 @@
 
 <nav>
 	<a href="/">Marketplace</a>
-	<a href="/sandbox">My Sandbox</a>
-	<a href="/sandbox/all">All Sandbox</a>
+	<a href="/library">My Sandbox</a>
+	<a href="/library/all">All Sandbox</a>
 	{#if data.session}
+		<details style="display:inline-block">
+			<summary>+ New</summary>
+			<a href="/agents/new">New Agent</a>
+			<a href="/skills/new">New Skill</a>
+			<a href="/workflows/new">New Workflow</a>
+		</details>
 		<form method="POST" action="/logout" style="display:inline">
 			<button type="submit">Log out</button>
 		</form>

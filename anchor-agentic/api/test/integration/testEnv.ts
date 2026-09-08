@@ -7,7 +7,7 @@ export const testEnv: Bindings = {
   ALLOWED_ORIGIN: 'http://localhost:5173',
 }
 
-type ChainResult = { data: unknown; error: unknown }
+type ChainResult = { data: unknown; error: unknown; count?: number | null }
 
 // Mimics the subset of the supabase-js query builder our routes call:
 // every chained method returns the same thenable, which resolves to the
@@ -20,6 +20,8 @@ export function chain(result: ChainResult) {
     insert: () => builder,
     update: () => builder,
     delete: () => builder,
+    range: () => Promise.resolve(result),
+    textSearch: () => builder,
     maybeSingle: () => Promise.resolve(result),
     single: () => Promise.resolve(result),
     then: (onFulfilled: (value: ChainResult) => unknown) => onFulfilled(result),
