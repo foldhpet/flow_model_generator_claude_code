@@ -39,6 +39,7 @@ export interface Agent {
 	system_prompt: string | null;
 	status: DomainStatus;
 	current_version: number;
+	published_version: number | null;
 	created_at: string;
 	updated_at: string;
 }
@@ -62,6 +63,7 @@ export interface Skill {
 	skill_files: SkillFile[];
 	status: DomainStatus;
 	current_version: number;
+	published_version: number | null;
 	created_at: string;
 	updated_at: string;
 }
@@ -73,6 +75,7 @@ export interface Workflow {
 	description: string | null;
 	status: DomainStatus;
 	current_version: number;
+	published_version: number | null;
 	created_at: string;
 	updated_at: string;
 }

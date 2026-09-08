@@ -39,11 +39,7 @@
 			<input value={data.role.name} disabled readonly />
 			<span>(a Task cannot be moved to a different Role)</span>
 		</label>
-		<select name="status">
-			{#each ['Draft', 'Published'] as status (status)}
-				<option value={status} selected={status === data.task.status}>{status}</option>
-			{/each}
-		</select>
+		<p>Status: {data.task.status}</p>
 		<button type="submit">Save</button>
 	</form>
 	{#if data.task.status === 'Draft'}

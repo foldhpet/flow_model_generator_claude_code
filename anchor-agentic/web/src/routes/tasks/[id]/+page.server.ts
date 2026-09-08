@@ -40,13 +40,12 @@ export const actions: Actions = {
 		const form = await request.formData();
 		const name = String(form.get('name') ?? '').trim();
 		const instructions = String(form.get('instructions') ?? '').trim();
-		const status = String(form.get('status') ?? '');
 		if (!name) return fail(400, { error: 'Name is required.' });
 
 		try {
 			await apiRequest(`/api/v1/tasks/${params.id}`, {
 				method: 'PATCH',
-				body: JSON.stringify({ name, instructions, status }),
+				body: JSON.stringify({ name, instructions }),
 				accessToken: locals.session?.access_token,
 				fetchFn: fetch
 			});

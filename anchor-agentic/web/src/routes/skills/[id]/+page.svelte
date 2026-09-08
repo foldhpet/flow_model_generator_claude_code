@@ -87,13 +87,19 @@
 		<button type="button" onclick={addFile}>+ Add file</button>
 		<input type="hidden" name="skill_files" value={JSON.stringify(files)} />
 
-		<select name="status">
-			{#each ['Draft', 'Published'] as status (status)}
-				<option value={status} selected={status === data.skill.status}>{status}</option>
-			{/each}
-		</select>
+		<p>Status: {data.skill.status}</p>
 		<button type="submit">Save</button>
 	</form>
+	{#if data.skill.published_version == null}
+		<p>No published version yet.</p>
+	{:else}
+		<p>Published at v{data.skill.published_version}.</p>
+	{/if}
+	{#if data.skill.published_version == null || data.skill.current_version > data.skill.published_version}
+		<form method="POST" action="?/publish" use:enhance>
+			<button type="submit">{data.skill.published_version == null ? 'Publish' : 'Re-publish'}</button>
+		</form>
+	{/if}
 	{#if data.skill.status === 'Draft'}
 		<form method="POST" action="?/archive" use:enhance>
 			<button type="submit">Archive</button>

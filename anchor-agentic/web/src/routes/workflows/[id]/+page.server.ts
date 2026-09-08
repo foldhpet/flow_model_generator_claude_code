@@ -109,13 +109,26 @@ export const actions: Actions = {
 		const form = await request.formData();
 		const name = String(form.get('name') ?? '').trim();
 		const description = String(form.get('description') ?? '').trim();
-		const status = String(form.get('status') ?? '');
 		if (!name) return fail(400, { error: 'Name is required.' });
 
 		try {
 			await apiRequest(`/api/v1/workflows/${params.id}`, {
 				method: 'PATCH',
-				body: JSON.stringify({ name, description, status }),
+				body: JSON.stringify({ name, description }),
+				accessToken: locals.session?.access_token,
+				fetchFn: fetch
+			});
+		} catch (err) {
+			if (err instanceof ApiError) return fail(err.status, { error: err.message });
+			throw err;
+		}
+		return { success: true };
+	},
+
+	publish: async ({ params, locals, fetch }) => {
+		try {
+			await apiRequest(`/api/v1/publish/WORKFLOW/${params.id}`, {
+				method: 'POST',
 				accessToken: locals.session?.access_token,
 				fetchFn: fetch
 			});

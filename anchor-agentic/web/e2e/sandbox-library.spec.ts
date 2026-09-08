@@ -80,21 +80,20 @@ test.describe('Sandbox & Version Control (US-014–US-019)', () => {
 		await expect(itemRow(skillName)).toContainText('[Draft]');
 		await expect(itemRow(workflowName)).toContainText('[Draft]');
 
-		// Publish the Role — it stays visible in My Library, just with a new badge.
-		await roleRow.getByRole('link', { name: roleName, exact: true }).click();
-		await page.waitForURL(/\/roles\/[0-9a-f-]+$/);
-		const updateForm = page.locator('form[action="?/update"]');
-		await updateForm.locator('select[name="status"]').selectOption('Published');
+		// Publish the Skill (Role/Task are never independently publishable — US-023) —
+		// it stays visible in My Library, just with a new badge.
+		await itemRow(skillName).getByRole('link', { name: skillName, exact: true }).click();
+		await page.waitForURL(/\/skills\/[0-9a-f-]+$/);
 		await Promise.all([
 			page.waitForResponse(
-				(resp) => resp.url().includes('?/update') && resp.request().method() === 'POST'
+				(resp) => resp.url().includes('?/publish') && resp.request().method() === 'POST'
 			),
-			updateForm.getByRole('button', { name: 'Save' }).click()
+			page.getByRole('button', { name: 'Publish' }).click()
 		]);
-		await expect(updateForm.locator('select[name="status"]')).toHaveValue('Published');
+		await expect(page.getByText(/Published at v\d+\./)).toBeVisible();
 
 		await page.goto('/library');
-		await expect(itemRow(roleName)).toContainText('[Published]');
+		await expect(itemRow(skillName)).toContainText('[Published]');
 
 		// (4) Archive the (still-Draft) Task — it disappears from the default view.
 		await page.goto(taskUrl);

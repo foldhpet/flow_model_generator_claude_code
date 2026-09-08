@@ -34,11 +34,7 @@
 			Description
 			<input name="description" value={data.role.description ?? ''} />
 		</label>
-		<select name="status">
-			{#each ['Draft', 'Published'] as status (status)}
-				<option value={status} selected={status === data.role.status}>{status}</option>
-			{/each}
-		</select>
+		<p>Status: {data.role.status}</p>
 		<button type="submit">Save</button>
 	</form>
 	{#if data.role.status === 'Draft'}

@@ -11,7 +11,7 @@ export const agentsRouter = new Hono<AppEnv>()
 agentsRouter.use('*', requireAuth)
 
 const AGENT_COLUMNS =
-  'id, owner_id, role_id, system_prompt, status, current_version, created_at, updated_at'
+  'id, owner_id, role_id, system_prompt, status, current_version, published_version, created_at, updated_at'
 
 agentsRouter.get('/', async (c) => {
   const supabase = c.get('supabase')

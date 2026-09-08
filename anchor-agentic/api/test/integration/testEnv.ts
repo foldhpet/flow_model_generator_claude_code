@@ -16,6 +16,7 @@ export function chain(result: ChainResult) {
   const builder = {
     select: () => builder,
     eq: () => builder,
+    in: () => builder,
     order: () => builder,
     insert: () => builder,
     update: () => builder,

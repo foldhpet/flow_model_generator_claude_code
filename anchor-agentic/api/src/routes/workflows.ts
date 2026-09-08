@@ -12,7 +12,8 @@ export const workflowsRouter = new Hono<AppEnv>()
 
 workflowsRouter.use('*', requireAuth)
 
-const WORKFLOW_COLUMNS = 'id, owner_id, name, description, status, current_version, created_at, updated_at'
+const WORKFLOW_COLUMNS =
+  'id, owner_id, name, description, status, current_version, published_version, created_at, updated_at'
 const STEP_COLUMNS = 'id, workflow_id, order_index, step_type, task_id, agent_id, skill_id, created_at'
 
 workflowsRouter.get('/', async (c) => {

@@ -16,13 +16,11 @@ async function registerUser(page: import('@playwright/test').Page, tag: string) 
 }
 
 async function publish(page: import('@playwright/test').Page) {
-	const updateForm = page.locator('form[action="?/update"]');
-	await updateForm.locator('select[name="status"]').selectOption('Published');
 	await Promise.all([
 		page.waitForResponse(
-			(resp) => resp.url().includes('?/update') && resp.request().method() === 'POST'
+			(resp) => resp.url().includes('?/publish') && resp.request().method() === 'POST'
 		),
-		updateForm.getByRole('button', { name: 'Save' }).click()
+		page.getByRole('button', { name: 'Publish' }).click()
 	]);
 }
 
@@ -70,7 +68,7 @@ test.describe('Clone (US-020–US-022)', () => {
 		}
 
 		await publish(page);
-		await expect(page.locator('select[name="status"]')).toHaveValue('Published');
+		await expect(page.getByText(/Published at v\d+\./)).toBeVisible();
 		const sourceAgentUrl = page.url();
 
 		const contextB = await browser.newContext();
@@ -87,7 +85,7 @@ test.describe('Clone (US-020–US-022)', () => {
 		]);
 		await pageB.waitForURL((url) => url.href !== sourceAgentUrl && /\/agents\/[0-9a-f-]+$/.test(url.pathname));
 
-		await expect(pageB.locator('select[name="status"]')).toHaveValue('Draft');
+		await expect(pageB.getByText('Status: Draft')).toBeVisible();
 		for (const taskName of taskNames) {
 			await expect(
 				pageB.locator('li', { hasText: taskName }).getByRole('button', { name: 'Unassign' })
@@ -123,7 +121,7 @@ test.describe('Clone (US-020–US-022)', () => {
 		await expect(page).toHaveURL(/\/skills\/[0-9a-f-]+$/);
 
 		await publish(page);
-		await expect(page.locator('select[name="status"]')).toHaveValue('Published');
+		await expect(page.getByText(/Published at v\d+\./)).toBeVisible();
 		const sourceSkillUrl = page.url();
 
 		const contextB = await browser.newContext();
@@ -139,7 +137,7 @@ test.describe('Clone (US-020–US-022)', () => {
 		]);
 		await pageB.waitForURL((url) => url.href !== sourceSkillUrl && /\/skills\/[0-9a-f-]+$/.test(url.pathname));
 
-		await expect(pageB.locator('select[name="status"]')).toHaveValue('Draft');
+		await expect(pageB.getByText('Status: Draft')).toBeVisible();
 		await expect(pageB.locator('input[name="name"]')).toHaveValue(skillName);
 		await expect(pageB.getByText('Cloned from')).toBeVisible();
 

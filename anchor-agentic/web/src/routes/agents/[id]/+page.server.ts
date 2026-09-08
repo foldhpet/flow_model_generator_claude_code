@@ -62,12 +62,25 @@ export const actions: Actions = {
 	update: async ({ request, params, locals, fetch }) => {
 		const form = await request.formData();
 		const systemPrompt = String(form.get('system_prompt') ?? '');
-		const status = String(form.get('status') ?? '');
 
 		try {
 			await apiRequest(`/api/v1/agents/${params.id}`, {
 				method: 'PATCH',
-				body: JSON.stringify({ system_prompt: systemPrompt, status }),
+				body: JSON.stringify({ system_prompt: systemPrompt }),
+				accessToken: locals.session?.access_token,
+				fetchFn: fetch
+			});
+		} catch (err) {
+			if (err instanceof ApiError) return fail(err.status, { error: err.message });
+			throw err;
+		}
+		return { success: true };
+	},
+
+	publish: async ({ params, locals, fetch }) => {
+		try {
+			await apiRequest(`/api/v1/publish/AGENT/${params.id}`, {
+				method: 'POST',
 				accessToken: locals.session?.access_token,
 				fetchFn: fetch
 			});

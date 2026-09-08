@@ -66,15 +66,19 @@
 			Description
 			<input name="description" value={data.workflow.description ?? ''} />
 		</label>
-		<label>
-			Status
-			<select name="status" value={data.workflow.status}>
-				<option value="Draft">Draft</option>
-				<option value="Published">Published</option>
-			</select>
-		</label>
+		<p>Status: {data.workflow.status}</p>
 		<button type="submit">Save</button>
 	</form>
+	{#if data.workflow.published_version == null}
+		<p>No published version yet.</p>
+	{:else}
+		<p>Published at v{data.workflow.published_version}.</p>
+	{/if}
+	{#if data.workflow.published_version == null || data.workflow.current_version > data.workflow.published_version}
+		<form method="POST" action="?/publish" use:enhance>
+			<button type="submit">{data.workflow.published_version == null ? 'Publish' : 'Re-publish'}</button>
+		</form>
+	{/if}
 	{#if data.workflow.status === 'Draft'}
 		<form method="POST" action="?/archive" use:enhance>
 			<button type="submit">Archive</button>

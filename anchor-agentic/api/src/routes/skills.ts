@@ -11,7 +11,7 @@ export const skillsRouter = new Hono<AppEnv>()
 skillsRouter.use('*', requireAuth)
 
 const SKILL_COLUMNS =
-  'id, owner_id, name, description, skill_files, status, current_version, created_at, updated_at'
+  'id, owner_id, name, description, skill_files, status, current_version, published_version, created_at, updated_at'
 
 skillsRouter.get('/', async (c) => {
   const supabase = c.get('supabase')

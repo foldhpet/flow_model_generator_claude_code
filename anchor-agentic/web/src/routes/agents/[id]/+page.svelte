@@ -51,13 +51,19 @@
 			System prompt
 			<textarea name="system_prompt">{data.agent.system_prompt ?? ''}</textarea>
 		</label>
-		<select name="status">
-			{#each ['Draft', 'Published'] as status (status)}
-				<option value={status} selected={status === data.agent.status}>{status}</option>
-			{/each}
-		</select>
+		<p>Status: {data.agent.status}</p>
 		<button type="submit">Save</button>
 	</form>
+	{#if data.agent.published_version == null}
+		<p>No published version yet.</p>
+	{:else}
+		<p>Published at v{data.agent.published_version}.</p>
+	{/if}
+	{#if data.agent.published_version == null || data.agent.current_version > data.agent.published_version}
+		<form method="POST" action="?/publish" use:enhance>
+			<button type="submit">{data.agent.published_version == null ? 'Publish' : 'Re-publish'}</button>
+		</form>
+	{/if}
 	{#if data.agent.status === 'Draft'}
 		<form method="POST" action="?/archive" use:enhance>
 			<button type="submit">Archive</button>

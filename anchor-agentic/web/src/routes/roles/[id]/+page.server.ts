@@ -37,13 +37,12 @@ export const actions: Actions = {
 		const form = await request.formData();
 		const name = String(form.get('name') ?? '').trim();
 		const description = String(form.get('description') ?? '').trim();
-		const status = String(form.get('status') ?? '');
 		if (!name) return fail(400, { error: 'Name is required.' });
 
 		try {
 			await apiRequest(`/api/v1/roles/${params.id}`, {
 				method: 'PATCH',
-				body: JSON.stringify({ name, description, status }),
+				body: JSON.stringify({ name, description }),
 				accessToken: locals.session?.access_token,
 				fetchFn: fetch
 			});
