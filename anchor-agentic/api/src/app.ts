@@ -4,6 +4,7 @@ import type { AppEnv } from './types'
 import { requestId } from './middleware/requestId'
 import { errorHandler } from './middleware/errorHandler'
 import { marketplaceRouter } from './routes/marketplace'
+import { ratingsRouter } from './routes/ratings'
 import { sandboxRouter } from './routes/sandbox'
 import { rolesRouter } from './routes/roles'
 import { tasksRouter } from './routes/tasks'
@@ -24,6 +25,7 @@ export function createApp() {
 
   app.get('/api/v1/healthz', (c) => c.json({ ok: true }))
   app.route('/api/v1/marketplace', marketplaceRouter)
+  app.route('/api/v1/marketplace', ratingsRouter)
   app.route('/api/v1/sandbox', sandboxRouter)
   app.route('/api/v1/roles', rolesRouter)
   app.route('/api/v1/tasks', tasksRouter)

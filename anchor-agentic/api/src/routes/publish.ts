@@ -26,6 +26,8 @@ const COLUMNS: Record<PublishItemType, string> = {
   WORKFLOW: 'id, owner_id, name, description, status, current_version, published_version, created_at, updated_at',
 }
 
+const STEP_COLUMNS = 'id, workflow_id, order_index, step_type, task_id, agent_id, skill_id, created_at'
+
 // US-023/US-024/US-025: the sole way any item reaches Published. Runs
 // structural completeness checks (US-024), then bumps current_version,
 // records a snapshot (same choke point as every other mutation), and
@@ -64,13 +66,15 @@ publishRouter.post('/:itemType/:id', async (c) => {
     return c.json({ error: 'skill_has_no_files', requestId: c.get('requestId') }, 400)
   }
 
+  let workflowSteps: unknown[] = []
   if (itemType === 'WORKFLOW') {
     const { data: steps, error: stepsError } = await supabase
       .from('workflow_steps')
-      .select('order_index, step_type, task_id, agent_id, skill_id')
+      .select(STEP_COLUMNS)
       .eq('workflow_id', id)
       .order('order_index', { ascending: true })
     if (stepsError) throw stepsError
+    workflowSteps = steps ?? []
     if (!steps || steps.length === 0) {
       return c.json({ error: 'workflow_has_no_steps', requestId: c.get('requestId') }, 400)
     }
@@ -123,7 +127,8 @@ publishRouter.post('/:itemType/:id', async (c) => {
     .single()
   if (updateError) throw updateError
 
-  await recordVersionSnapshot(supabase, itemType, id, newVersion, updated, userId)
+  const snapshotData = itemType === 'WORKFLOW' ? { ...updated, steps: workflowSteps } : updated
+  await recordVersionSnapshot(supabase, itemType, id, newVersion, snapshotData, userId)
 
   return c.json({ published: { item_type: itemType, id, version: newVersion } })
 })

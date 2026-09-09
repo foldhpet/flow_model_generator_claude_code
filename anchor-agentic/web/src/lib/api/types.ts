@@ -130,3 +130,49 @@ export interface Provenance {
 	source_status: DomainStatus | null;
 	cloned_at: string;
 }
+
+export type MarketplaceItemType = 'AGENT' | 'SKILL' | 'WORKFLOW';
+
+// The light shape returned by GET /api/v1/marketplace/items (a listing
+// row) — no system_prompt/skill_files/steps, those are detail-only.
+export interface MarketplaceListItem {
+	item_type: MarketplaceItemType;
+	id: string;
+	owner_id: string;
+	name: string | null;
+	description: string | null;
+	role_id: string | null;
+	role_name: string | null;
+	published_version: number;
+	clone_count: number;
+	created_at: string;
+	updated_at: string;
+	rating: number | null;
+	rating_count: number;
+}
+
+// The full row returned as `item` by GET /api/v1/marketplace/items/:itemType/:id
+// — frozen content (system_prompt/skill_files/steps) at published_version,
+// not the live row.
+export interface MarketplaceItemDetail {
+	item_type: MarketplaceItemType;
+	id: string;
+	owner_id: string;
+	name: string | null;
+	description: string | null;
+	role_id: string | null;
+	role_name: string | null;
+	system_prompt: string | null;
+	skill_files: SkillFile[] | null;
+	steps: WorkflowStep[] | null;
+	published_version: number;
+	clone_count: number;
+	created_at: string;
+	updated_at: string;
+	rating: number | null;
+	rating_count: number;
+}
+
+export interface MarketplaceWorkflowStep extends WorkflowStep {
+	label: string;
+}
