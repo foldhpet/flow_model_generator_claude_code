@@ -29,3 +29,9 @@
 </nav>
 
 {@render children()}
+
+<footer style="margin-top: 2rem; font-size: 0.85rem; color: gray">
+	<a href="https://github.com/sponsors/foldhpet" target="_blank" rel="noopener noreferrer">
+		♥ Support this project
+	</a>
+</footer>
