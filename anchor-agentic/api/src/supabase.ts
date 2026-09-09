@@ -15,3 +15,18 @@ export function createRequestSupabaseClient(c: Context<AppEnv>) {
     auth: { persistSession: false, autoRefreshToken: false },
   })
 }
+
+// Service-role client: bypasses RLS entirely. Used only by the OAuth callback
+// handler (GET /api/v1/github/callback), which has no authenticated user to
+// forward and must authenticate the write via a signed state token instead.
+// Never use this elsewhere — all other routes should use createRequestSupabaseClient.
+export function createServiceRoleClient(c: Context<AppEnv>) {
+  return createClient(c.env.SUPABASE_URL, c.env.SUPABASE_ANON_KEY, {
+    global: {
+      headers: {
+        Authorization: `Bearer ${c.env.SUPABASE_SERVICE_ROLE_KEY}`,
+      },
+    },
+    auth: { persistSession: false, autoRefreshToken: false },
+  })
+}

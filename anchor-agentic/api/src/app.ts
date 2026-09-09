@@ -14,6 +14,8 @@ import { workflowsRouter } from './routes/workflows'
 import { libraryRouter } from './routes/library'
 import { cloneRouter } from './routes/clone'
 import { publishRouter } from './routes/publish'
+import { exportRouter } from './routes/export'
+import { githubRouter } from './routes/github'
 
 export function createApp() {
   const app = new Hono<AppEnv>()
@@ -35,6 +37,8 @@ export function createApp() {
   app.route('/api/v1/library', libraryRouter)
   app.route('/api/v1/clone', cloneRouter)
   app.route('/api/v1/publish', publishRouter)
+  app.route('/api/v1/export', exportRouter)
+  app.route('/api/v1/github', githubRouter)
 
   return app
 }

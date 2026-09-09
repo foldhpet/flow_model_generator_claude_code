@@ -1,9 +1,21 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import { downloadExport } from '$lib/export';
 	import type { VersionSnapshot } from '$lib/api/types';
 	import type { PageProps } from './$types';
 
 	let { data, form }: PageProps = $props();
+
+	let exportError = $state<string | null>(null);
+
+	async function handleExport() {
+		exportError = null;
+		try {
+			await downloadExport('SKILL', data.skill.id, data.skill.name);
+		} catch (err) {
+			exportError = err instanceof Error ? err.message : 'Export failed';
+		}
+	}
 
 	let files = $state(data.skill.skill_files.map((f) => ({ ...f })));
 
@@ -49,6 +61,10 @@
 
 {#if data.isOwner}
 	<p>Cloned {data.cloneCount} times</p>
+	<button type="button" onclick={handleExport}>Export to .claude</button>
+	{#if exportError}
+		<p role="alert">{exportError}</p>
+	{/if}
 {/if}
 
 {#if data.isOwner && data.skill.status !== 'Archived'}

@@ -1,9 +1,21 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import { downloadExport } from '$lib/export';
 	import type { VersionSnapshot } from '$lib/api/types';
 	import type { ActionData, PageProps } from './$types';
 
 	let { data, form }: PageProps & { form: ActionData } = $props();
+
+	let exportError = $state<string | null>(null);
+
+	async function handleExport() {
+		exportError = null;
+		try {
+			await downloadExport('WORKFLOW', data.workflow.id, data.workflow.name);
+		} catch (err) {
+			exportError = err instanceof Error ? err.message : 'Export failed';
+		}
+	}
 
 	let addStepType = $state<'TASK' | 'AGENT' | 'SKILL'>('TASK');
 	let editingStepId = $state<string | null>(null);
@@ -46,6 +58,10 @@
 
 {#if data.isOwner}
 	<p>Cloned {data.cloneCount} times</p>
+	<button type="button" onclick={handleExport}>Export to .claude</button>
+	{#if exportError}
+		<p role="alert">{exportError}</p>
+	{/if}
 {/if}
 
 {#if canEdit}

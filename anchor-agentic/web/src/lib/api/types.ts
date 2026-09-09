@@ -133,6 +133,13 @@ export interface Provenance {
 
 export type MarketplaceItemType = 'AGENT' | 'SKILL' | 'WORKFLOW';
 
+// US-033/034/035/037: one file in the .claude-folder export manifest
+// returned by POST /api/v1/export.
+export interface ExportFile {
+	path: string;
+	content: string;
+}
+
 // The light shape returned by GET /api/v1/marketplace/items (a listing
 // row) — no system_prompt/skill_files/steps, those are detail-only.
 export interface MarketplaceListItem {

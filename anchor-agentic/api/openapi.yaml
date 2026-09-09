@@ -1,0 +1,1927 @@
+openapi: 3.0.3
+info:
+  title: AnchorAgentic API
+  version: '1.0'
+  description: >
+    Hono API on Cloudflare Workers backing AnchorAgentic.io. Owns
+    `/api/v1/marketplace/*` (public reads) and all other `/api/v1/*` routes
+    (auth required). Supabase Auth issues the bearer JWT; Postgres
+    Row-Level Security enforces the same rules independently of this API
+    as a second layer, never the only one.
+servers:
+  - url: '{baseUrl}/api/v1'
+    variables:
+      baseUrl:
+        default: http://localhost:8787
+security: []
+tags:
+  - name: Health
+  - name: Marketplace
+  - name: Ratings
+  - name: Sandbox
+  - name: Roles
+  - name: Tasks
+  - name: Agents
+  - name: Skills
+  - name: Workflows
+  - name: Library
+  - name: Clone
+  - name: Publish
+  - name: Export
+
+paths:
+  /healthz:
+    get:
+      tags: [Health]
+      summary: Liveness check
+      security: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+
+  /marketplace/items:
+    get:
+      tags: [Marketplace]
+      summary: List published Marketplace items
+      description: Public — no authentication required. Reads the live `marketplace_items` view, sorted by clone_count desc, created_at desc.
+      security: []
+      parameters:
+        - name: type
+          in: query
+          schema:
+            $ref: '#/components/schemas/MarketplaceItemType'
+        - name: role
+          in: query
+          description: Filter by the owning Role's id (Agent items only)
+          schema:
+            type: string
+            format: uuid
+        - name: q
+          in: query
+          description: Case-insensitive substring match on name/description
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/MarketplaceListItem'
+                  total:
+                    type: integer
+                  page:
+                    type: integer
+                  pageSize:
+                    type: integer
+
+  /marketplace/items/{itemType}/{id}:
+    get:
+      tags: [Marketplace]
+      summary: Get a published Marketplace item's frozen detail
+      description: Public — no authentication required. Content is frozen at `published_version`, not the live row.
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/ItemTypePath'
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  item:
+                    $ref: '#/components/schemas/MarketplaceItemDetail'
+                  assignments:
+                    description: Present for AGENT — the Agent's assigned Task rows
+                    type: array
+                    items:
+                      type: object
+                  steps:
+                    description: Present for WORKFLOW — ordered step rows with resolved labels
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/WorkflowStep'
+                  myRating:
+                    description: Present only when called with a valid bearer token — the caller's own 1-5 rating, or null
+                    type: integer
+                    nullable: true
+        '400':
+          $ref: '#/components/responses/InvalidItemType'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /marketplace/items/{itemType}/{id}/rating:
+    post:
+      tags: [Ratings]
+      summary: Rate a published Marketplace item (1-5)
+      description: Auth required. Upserts on (item_type, item_id, user_id) — a second call from the same user overwrites their prior rating.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ItemTypePath'
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [score]
+              properties:
+                score:
+                  type: integer
+                  minimum: 1
+                  maximum: 5
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  myRating:
+                    type: integer
+                  rating:
+                    type: number
+                    description: New average rating
+                  rating_count:
+                    type: integer
+        '400':
+          description: invalid_item_type | invalid_score
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /sandbox/items:
+    get:
+      tags: [Sandbox]
+      summary: List the caller's own Sandbox items
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SandboxItem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [Sandbox]
+      summary: Create a Sandbox item
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title]
+              properties:
+                title:
+                  type: string
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  item:
+                    $ref: '#/components/schemas/SandboxItem'
+        '400':
+          description: invalid_title
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /sandbox/items/{id}:
+    patch:
+      tags: [Sandbox]
+      summary: Update a Sandbox item
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                status:
+                  $ref: '#/components/schemas/DomainStatus'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  item:
+                    $ref: '#/components/schemas/SandboxItem'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    delete:
+      tags: [Sandbox]
+      summary: Delete a Sandbox item
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '204':
+          description: No Content
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /roles:
+    get:
+      tags: [Roles]
+      summary: List Roles owned by the caller
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  roles:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Role'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [Roles]
+      summary: Create a Role
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  role:
+                    $ref: '#/components/schemas/Role'
+        '400':
+          description: invalid_name
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /roles/{id}:
+    get:
+      tags: [Roles]
+      summary: Get a Role
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  role:
+                    $ref: '#/components/schemas/Role'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    patch:
+      tags: [Roles]
+      summary: Update a Role
+      description: Direct transition to Published is rejected — use POST /publish/{itemType}/{id} instead.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                status:
+                  $ref: '#/components/schemas/DomainStatus'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  role:
+                    $ref: '#/components/schemas/Role'
+        '400':
+          $ref: '#/components/responses/InvalidTransition'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /tasks:
+    get:
+      tags: [Tasks]
+      summary: List Tasks owned by the caller
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: role_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tasks:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Task'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [Tasks]
+      summary: Create a Task under one of the caller's own Roles
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, role_id]
+              properties:
+                name:
+                  type: string
+                role_id:
+                  type: string
+                  format: uuid
+                instructions:
+                  type: string
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  task:
+                    $ref: '#/components/schemas/Task'
+        '400':
+          description: invalid_name | role_id_required | role_not_owned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /tasks/{id}:
+    get:
+      tags: [Tasks]
+      summary: Get a Task
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  task:
+                    $ref: '#/components/schemas/Task'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    patch:
+      tags: [Tasks]
+      summary: Update a Task
+      description: The owning role_id is immutable after creation — including it in the body with a different value is rejected.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                instructions:
+                  type: string
+                status:
+                  $ref: '#/components/schemas/DomainStatus'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  task:
+                    $ref: '#/components/schemas/Task'
+        '400':
+          description: role_immutable | (transition error)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /agents:
+    get:
+      tags: [Agents]
+      summary: List Agents owned by the caller
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  agents:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Agent'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [Agents]
+      summary: Create an Agent for one of the caller's own Roles
+      description: A Role can have at most one Agent — a second attempt for the same role_id returns 409.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [role_id]
+              properties:
+                role_id:
+                  type: string
+                  format: uuid
+                system_prompt:
+                  type: string
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  agent:
+                    $ref: '#/components/schemas/Agent'
+        '400':
+          description: role_id_required | role_not_owned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: role_already_has_agent
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /agents/{id}:
+    get:
+      tags: [Agents]
+      summary: Get an Agent
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  agent:
+                    $ref: '#/components/schemas/Agent'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    patch:
+      tags: [Agents]
+      summary: Update an Agent
+      description: The owning role_id is immutable after creation.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                system_prompt:
+                  type: string
+                status:
+                  $ref: '#/components/schemas/DomainStatus'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  agent:
+                    $ref: '#/components/schemas/Agent'
+        '400':
+          description: role_immutable | (transition error)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /agents/{id}/tasks:
+    get:
+      tags: [Agents]
+      summary: List an Agent's Task assignments
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  assignments:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AgentTaskAssignment'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /agents/{id}/tasks/{taskId}:
+    post:
+      tags: [Agents]
+      summary: Assign a Task to an Agent
+      description: The Task must belong to the same Role as the Agent. Rejected if either item is Archived, or if already assigned.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: No Content
+        '400':
+          description: archived_item_is_terminal | task_role_mismatch
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: not_found | task_not_found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: already_assigned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    delete:
+      tags: [Agents]
+      summary: Unassign a Task from an Agent
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: No Content
+        '400':
+          $ref: '#/components/responses/InvalidTransition'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /skills:
+    get:
+      tags: [Skills]
+      summary: List Skills owned by the caller
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  skills:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Skill'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [Skills]
+      summary: Create a Skill
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                skill_files:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/SkillFile'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  skill:
+                    $ref: '#/components/schemas/Skill'
+        '400':
+          description: invalid_name
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /skills/{id}:
+    get:
+      tags: [Skills]
+      summary: Get a Skill
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  skill:
+                    $ref: '#/components/schemas/Skill'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    patch:
+      tags: [Skills]
+      summary: Update a Skill
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                skill_files:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/SkillFile'
+                status:
+                  $ref: '#/components/schemas/DomainStatus'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  skill:
+                    $ref: '#/components/schemas/Skill'
+        '400':
+          description: invalid_skill_files | (transition error)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /workflows:
+    get:
+      tags: [Workflows]
+      summary: List Workflows owned by the caller
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  workflows:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Workflow'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [Workflows]
+      summary: Create a Workflow
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  workflow:
+                    $ref: '#/components/schemas/Workflow'
+        '400':
+          description: invalid_name
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /workflows/{id}:
+    get:
+      tags: [Workflows]
+      summary: Get a Workflow
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  workflow:
+                    $ref: '#/components/schemas/Workflow'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    patch:
+      tags: [Workflows]
+      summary: Update a Workflow
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                status:
+                  $ref: '#/components/schemas/DomainStatus'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  workflow:
+                    $ref: '#/components/schemas/Workflow'
+        '400':
+          $ref: '#/components/responses/InvalidTransition'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /workflows/{id}/steps:
+    get:
+      tags: [Workflows]
+      summary: List a Workflow's steps in order
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  steps:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/WorkflowStep'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [Workflows]
+      summary: Append a step to a Workflow
+      description: Exactly one of task_id/agent_id/skill_id must match step_type. The referenced item must belong to the caller (or be Published) and must not be Archived.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkflowStepInput'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkflowWithSteps'
+        '400':
+          description: invalid_reference | reference_not_allowed | archived_item_is_terminal
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /workflows/{id}/steps/{stepId}:
+    patch:
+      tags: [Workflows]
+      summary: Update a Workflow step's reference
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+        - name: stepId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkflowStepInput'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkflowWithSteps'
+        '400':
+          description: invalid_reference | reference_not_allowed | archived_item_is_terminal
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: not_found | step_not_found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    delete:
+      tags: [Workflows]
+      summary: Remove a Workflow step
+      description: Remaining steps are renumbered to stay contiguous.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+        - name: stepId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkflowWithSteps'
+        '404':
+          description: not_found | step_not_found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /workflows/{id}/steps/reorder:
+    put:
+      tags: [Workflows]
+      summary: Reorder a Workflow's steps
+      description: step_ids must be exactly the current set of step ids for this Workflow, in the desired order.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [step_ids]
+              properties:
+                step_ids:
+                  type: array
+                  items:
+                    type: string
+                    format: uuid
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkflowWithSteps'
+        '400':
+          description: invalid_step_ids | step_set_mismatch
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /library:
+    get:
+      tags: [Library]
+      summary: Cross-entity search across Roles/Tasks/Agents/Skills/Workflows
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: scope
+          in: query
+          description: mine restricts to the caller's own items; all includes every registered user's Sandbox items (never private, by design)
+          schema:
+            type: string
+            enum: [mine, all]
+            default: mine
+        - name: type
+          in: query
+          schema:
+            $ref: '#/components/schemas/LibraryItemType'
+        - name: q
+          in: query
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/LibraryItem'
+                  total:
+                    type: integer
+                  page:
+                    type: integer
+                  pageSize:
+                    type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /library/{itemType}/{id}/versions:
+    get:
+      tags: [Library]
+      summary: List an item's version history
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: itemType
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/LibraryItemType'
+        - $ref: '#/components/parameters/IdPath'
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  versions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/VersionSnapshot'
+                  total:
+                    type: integer
+                  page:
+                    type: integer
+                  pageSize:
+                    type: integer
+        '400':
+          $ref: '#/components/responses/InvalidItemType'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /clone/{itemType}/{id}:
+    get:
+      tags: [Clone]
+      summary: Get an item's clone provenance and clone count
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CloneItemTypePath'
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  provenance:
+                    nullable: true
+                    $ref: '#/components/schemas/Provenance'
+                  cloneCount:
+                    type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [Clone]
+      summary: Clone a Published item into the caller's own Sandbox
+      description: Deep-clones the Role/Task/Agent graph as needed so the clone is self-contained.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CloneItemTypePath'
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  cloned:
+                    $ref: '#/components/schemas/CloneResult'
+        '400':
+          description: invalid_item_type | source_not_published
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /publish/{itemType}/{id}:
+    post:
+      tags: [Publish]
+      summary: Publish an item to the Marketplace
+      description: >
+        Only Agent, Skill, and Workflow are publishable. Runs completeness
+        checks (non-empty system_prompt for Agent, at least one skill_files
+        entry for Skill, at least one step with no dangling references for
+        Workflow) before freezing the current version into the Marketplace.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CloneItemTypePath'
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  published:
+                    type: object
+                    properties:
+                      item_type:
+                        $ref: '#/components/schemas/CloneItemType'
+                      id:
+                        type: string
+                        format: uuid
+                      version:
+                        type: integer
+        '400':
+          description: >
+            invalid_item_type | item_not_publishable_from_current_status |
+            empty_system_prompt | skill_has_no_files | workflow_has_no_steps |
+            dangling_step_reference (includes a `steps: number[]` field listing
+            the offending step numbers)
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Error'
+                  - type: object
+                    properties:
+                      steps:
+                        type: array
+                        items:
+                          type: integer
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /export:
+    post:
+      tags: [Export]
+      summary: Export an Agent/Skill/Workflow to .claude-folder-shaped files
+      description: >
+        Returns the manifest of files the caller's client packages into a
+        zip (US-037 — all zip packaging is client-side, per Architecture
+        Decision 4; this endpoint never produces a binary itself).
+        Authorization mirrors Workflow step referencing: the owner may
+        export their own item in any status; a non-owner may only export
+        it once it is Published. For WORKFLOW, export is rejected if any
+        step references an item that no longer exists (dangling reference),
+        using the same check as the publish endpoint.
+        `target: "github"` is accepted by the schema but not yet
+        implemented — see US-036/US-040 (deferred; requires a GitHub OAuth
+        App the operator has not yet provisioned).
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [item_type, item_id]
+              properties:
+                item_type:
+                  $ref: '#/components/schemas/CloneItemType'
+                item_id:
+                  type: string
+                  format: uuid
+                target:
+                  type: string
+                  enum: [zip, github]
+                  default: zip
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  files:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ExportFile'
+        '400':
+          description: invalid_item_type | invalid_target | dangling_step_reference
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '501':
+          description: github_export_not_implemented — deferred (US-036/US-040)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Supabase Auth access token (as returned by /register, /login).
+
+  parameters:
+    IdPath:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    ItemTypePath:
+      name: itemType
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/MarketplaceItemType'
+    CloneItemTypePath:
+      name: itemType
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/CloneItemType'
+
+  responses:
+    Unauthorized:
+      description: Missing or invalid bearer token
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Forbidden:
+      description: forbidden — caller does not own this item
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: not_found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    InvalidItemType:
+      description: invalid_item_type
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    InvalidTransition:
+      description: >
+        archived_item_is_terminal | use_publish_endpoint |
+        published_is_one_way | only_draft_can_be_archived
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+        requestId:
+          type: string
+
+    DomainStatus:
+      type: string
+      enum: [Draft, UnderReview, Published, Deprecated, Archived, Removed]
+
+    MarketplaceItemType:
+      type: string
+      enum: [AGENT, SKILL, WORKFLOW]
+
+    CloneItemType:
+      type: string
+      enum: [AGENT, SKILL, WORKFLOW]
+
+    LibraryItemType:
+      type: string
+      enum: [ROLE, TASK, AGENT, SKILL, WORKFLOW]
+
+    Role:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        owner_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        status:
+          $ref: '#/components/schemas/DomainStatus'
+        current_version:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    Task:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        owner_id:
+          type: string
+          format: uuid
+        role_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        instructions:
+          type: string
+          nullable: true
+        status:
+          $ref: '#/components/schemas/DomainStatus'
+        current_version:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    Agent:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        owner_id:
+          type: string
+          format: uuid
+        role_id:
+          type: string
+          format: uuid
+        system_prompt:
+          type: string
+          nullable: true
+        status:
+          $ref: '#/components/schemas/DomainStatus'
+        current_version:
+          type: integer
+        published_version:
+          type: integer
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    AgentTaskAssignment:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        task_id:
+          type: string
+          format: uuid
+        tasks:
+          type: object
+          nullable: true
+          properties:
+            id:
+              type: string
+              format: uuid
+            name:
+              type: string
+            role_id:
+              type: string
+              format: uuid
+            status:
+              $ref: '#/components/schemas/DomainStatus'
+
+    SkillFile:
+      type: object
+      required: [path, content]
+      properties:
+        path:
+          type: string
+        content:
+          type: string
+
+    Skill:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        owner_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        skill_files:
+          type: array
+          items:
+            $ref: '#/components/schemas/SkillFile'
+        status:
+          $ref: '#/components/schemas/DomainStatus'
+        current_version:
+          type: integer
+        published_version:
+          type: integer
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    Workflow:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        owner_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        status:
+          $ref: '#/components/schemas/DomainStatus'
+        current_version:
+          type: integer
+        published_version:
+          type: integer
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    WorkflowStep:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        workflow_id:
+          type: string
+          format: uuid
+        order_index:
+          type: integer
+        step_type:
+          type: string
+          enum: [TASK, AGENT, SKILL]
+        task_id:
+          type: string
+          format: uuid
+          nullable: true
+        agent_id:
+          type: string
+          format: uuid
+          nullable: true
+        skill_id:
+          type: string
+          format: uuid
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+
+    WorkflowStepInput:
+      type: object
+      required: [step_type]
+      properties:
+        step_type:
+          type: string
+          enum: [TASK, AGENT, SKILL]
+        task_id:
+          type: string
+          format: uuid
+        agent_id:
+          type: string
+          format: uuid
+        skill_id:
+          type: string
+          format: uuid
+
+    WorkflowWithSteps:
+      type: object
+      properties:
+        workflow:
+          $ref: '#/components/schemas/Workflow'
+        steps:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkflowStep'
+
+    LibraryItem:
+      type: object
+      properties:
+        item_type:
+          $ref: '#/components/schemas/LibraryItemType'
+        id:
+          type: string
+          format: uuid
+        owner_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        status:
+          $ref: '#/components/schemas/DomainStatus'
+        current_version:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    VersionSnapshot:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        item_type:
+          $ref: '#/components/schemas/LibraryItemType'
+        item_id:
+          type: string
+          format: uuid
+        version_number:
+          type: integer
+        snapshot_data:
+          type: object
+        created_by:
+          type: string
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+
+    CloneResult:
+      type: object
+      properties:
+        item_type:
+          $ref: '#/components/schemas/CloneItemType'
+        id:
+          type: string
+          format: uuid
+
+    Provenance:
+      type: object
+      properties:
+        source_item_type:
+          $ref: '#/components/schemas/CloneItemType'
+        source_item_id:
+          type: string
+          format: uuid
+        source_name:
+          type: string
+          nullable: true
+        source_status:
+          allOf:
+            - $ref: '#/components/schemas/DomainStatus'
+          nullable: true
+        cloned_at:
+          type: string
+          format: date-time
+
+    SandboxItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        status:
+          type: string
+          enum: [Draft, Published, UnderReview, Removed]
+        owner_id:
+          type: string
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    MarketplaceListItem:
+      type: object
+      properties:
+        item_type:
+          $ref: '#/components/schemas/MarketplaceItemType'
+        id:
+          type: string
+          format: uuid
+        owner_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          nullable: true
+        description:
+          type: string
+          nullable: true
+        role_id:
+          type: string
+          format: uuid
+          nullable: true
+        role_name:
+          type: string
+          nullable: true
+        published_version:
+          type: integer
+        clone_count:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        rating:
+          type: number
+          nullable: true
+        rating_count:
+          type: integer
+
+    MarketplaceItemDetail:
+      allOf:
+        - $ref: '#/components/schemas/MarketplaceListItem'
+        - type: object
+          properties:
+            system_prompt:
+              type: string
+              nullable: true
+            skill_files:
+              type: array
+              nullable: true
+              items:
+                $ref: '#/components/schemas/SkillFile'
+            steps:
+              type: array
+              nullable: true
+              items:
+                $ref: '#/components/schemas/WorkflowStep'
+
+    ExportFile:
+      type: object
+      required: [path, content]
+      properties:
+        path:
+          type: string
+          description: '.claude-relative path, e.g. .claude/agents/qa-engineer-a1b2c3d4.md'
+        content:
+          type: string

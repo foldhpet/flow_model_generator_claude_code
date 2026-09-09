@@ -52,7 +52,7 @@ const supabaseHandle: Handle = async ({ event, resolve }) => {
 // US-003 AC3 (and its Epic B equivalent for Role/Task/Agent/Skill/Workflow
 // authoring): anonymous direct navigation to a Sandbox-only URL redirects to
 // login rather than rendering the page or 500ing.
-const AUTHORING_PREFIXES = ['/sandbox', '/roles', '/tasks', '/agents', '/skills', '/workflows'];
+const AUTHORING_PREFIXES = ['/sandbox', '/roles', '/tasks', '/agents', '/skills', '/workflows', '/settings'];
 
 const sandboxGuard: Handle = async ({ event, resolve }) => {
 	if (AUTHORING_PREFIXES.some((p) => event.url.pathname.startsWith(p)) && !event.locals.session) {

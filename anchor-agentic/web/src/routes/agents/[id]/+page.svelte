@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import { downloadExport } from '$lib/export';
 	import type { VersionSnapshot } from '$lib/api/types';
 	import type { PageProps } from './$types';
 
@@ -7,6 +8,17 @@
 
 	let viewingVersion = $state<VersionSnapshot | null>(null);
 	let versionsTotalPages = $derived(Math.max(1, Math.ceil(data.versionsTotal / data.versionsPageSize)));
+
+	let exportError = $state<string | null>(null);
+
+	async function handleExport() {
+		exportError = null;
+		try {
+			await downloadExport('AGENT', data.agent.id, `agent-for-${data.role.name}`);
+		} catch (err) {
+			exportError = err instanceof Error ? err.message : 'Export failed';
+		}
+	}
 </script>
 
 <h1>Agent for {data.role.name}</h1>
@@ -35,6 +47,10 @@
 
 {#if data.isOwner}
 	<p>Cloned {data.cloneCount} times</p>
+	<button type="button" onclick={handleExport}>Export to .claude</button>
+	{#if exportError}
+		<p role="alert">{exportError}</p>
+	{/if}
 {/if}
 
 {#if data.isOwner && data.agent.status !== 'Archived'}
