@@ -183,3 +183,36 @@ export interface MarketplaceItemDetail {
 export interface MarketplaceWorkflowStep extends WorkflowStep {
 	label: string;
 }
+
+export type ReportReason = 'ABUSIVE' | 'BROKEN' | 'SPAM' | 'OTHER';
+export type ReportStatus = 'OPEN' | 'RESOLVED_DISMISSED' | 'RESOLVED_REMOVED';
+
+export interface AbuseReport {
+	id: string;
+	item_type: MarketplaceItemType;
+	item_id: string;
+	reporter_id: string | null;
+	reason: ReportReason;
+	detail: string | null;
+	status: ReportStatus;
+	created_at: string;
+}
+
+// One row from GET /api/v1/moderation/queue: a domain item currently
+// UnderReview, plus its OPEN abuse_reports (empty = reached here via US-044's
+// voluntary requestReview rather than a report).
+export interface ModerationQueueItem {
+	item_type: MarketplaceItemType;
+	id: string;
+	owner_id: string;
+	name?: string | null;
+	system_prompt?: string | null;
+	description?: string | null;
+	status: DomainStatus;
+	current_version: number;
+	published_version: number | null;
+	review_feedback: string | null;
+	created_at: string;
+	updated_at: string;
+	reports: AbuseReport[];
+}

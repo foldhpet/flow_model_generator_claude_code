@@ -29,4 +29,28 @@ describe('validateStatusTransition', () => {
   it('allows archiving a Draft item', () => {
     expect(validateStatusTransition('Draft', 'Archived')).toBeNull()
   })
+
+  it('rejects any further transition once Removed (terminal)', () => {
+    expect(validateStatusTransition('Removed', 'Draft')).toBe('removed_item_is_terminal')
+  })
+
+  it('rejects even a Removed -> Removed self-loop (terminal, not a no-op)', () => {
+    expect(validateStatusTransition('Removed', 'Removed')).toBe('removed_item_is_terminal')
+  })
+
+  it('rejects any transition out of UnderReview via the generic PATCH path', () => {
+    expect(validateStatusTransition('UnderReview', 'Draft')).toBe('use_moderation_endpoint')
+  })
+
+  it('rejects even an UnderReview -> UnderReview self-loop via the generic PATCH path', () => {
+    expect(validateStatusTransition('UnderReview', 'UnderReview')).toBe('use_moderation_endpoint')
+  })
+
+  it('rejects setting status to UnderReview directly (must use the publish endpoint)', () => {
+    expect(validateStatusTransition('Draft', 'UnderReview')).toBe('use_publish_endpoint')
+  })
+
+  it('rejects setting status to Removed directly (must use the moderation endpoint)', () => {
+    expect(validateStatusTransition('Published', 'Removed')).toBe('use_moderation_endpoint')
+  })
 })

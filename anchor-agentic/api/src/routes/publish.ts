@@ -1,9 +1,16 @@
 import { Hono } from 'hono'
 import type { AppEnv } from '../types'
 import { requireAuth } from '../middleware/auth'
-import { logRejection } from '../middleware/errorHandler'
+import { logEvaluationOutcome, logRejection } from '../middleware/errorHandler'
 import { recordVersionSnapshot } from '../versioning'
-import { findDanglingSteps, isAgentPublishReady, isSkillPublishReady } from '../publishValidation'
+import {
+  findDanglingSteps,
+  hasAssignedTask,
+  isAgentPublishReady,
+  isSkillPublishReady,
+  isSkillStructurallySound,
+} from '../publishValidation'
+import { evaluateAgentPromptQuality, evaluateSkillPromptQuality, evaluateWorkflowPromptQuality } from '../contentEvaluation'
 
 export const publishRouter = new Hono<AppEnv>()
 
@@ -54,7 +61,7 @@ publishRouter.post('/:itemType/:id', async (c) => {
     return c.json({ error: 'forbidden', requestId: c.get('requestId') }, 403)
   }
 
-  if (item.status === 'Archived' || item.status === 'Removed') {
+  if (item.status === 'Archived' || item.status === 'Removed' || item.status === 'UnderReview') {
     return c.json({ error: 'item_not_publishable_from_current_status', requestId: c.get('requestId') }, 400)
   }
 
@@ -62,8 +69,34 @@ publishRouter.post('/:itemType/:id', async (c) => {
     return c.json({ error: 'empty_system_prompt', requestId: c.get('requestId') }, 400)
   }
 
+  if (itemType === 'AGENT') {
+    const { count, error: taskCountError } = await supabase
+      .from('agent_tasks')
+      .select('task_id', { count: 'exact', head: true })
+      .eq('agent_id', id)
+    if (taskCountError) throw taskCountError
+    if (!hasAssignedTask(count ?? 0)) {
+      return c.json({ error: 'agent_has_no_tasks', requestId: c.get('requestId') }, 400)
+    }
+
+    const issues = evaluateAgentPromptQuality(item.system_prompt as string | null)
+    logEvaluationOutcome(c, { itemType, id, passed: issues.length === 0, issues })
+    if (issues.length > 0) {
+      return c.json({ error: 'quality_check_failed', requestId: c.get('requestId'), issues }, 400)
+    }
+  }
+
   if (itemType === 'SKILL' && !isSkillPublishReady(item)) {
     return c.json({ error: 'skill_has_no_files', requestId: c.get('requestId') }, 400)
+  }
+
+  if (itemType === 'SKILL') {
+    const skillFiles = item.skill_files as { path: string; content: string }[]
+    const issues = [...isSkillStructurallySound(skillFiles), ...evaluateSkillPromptQuality(skillFiles)]
+    logEvaluationOutcome(c, { itemType, id, passed: issues.length === 0, issues })
+    if (issues.length > 0) {
+      return c.json({ error: 'quality_check_failed', requestId: c.get('requestId'), issues }, 400)
+    }
   }
 
   let workflowSteps: unknown[] = []
@@ -109,15 +142,26 @@ publishRouter.post('/:itemType/:id', async (c) => {
         400,
       )
     }
+
+    const issues = evaluateWorkflowPromptQuality(item.description as string | null)
+    logEvaluationOutcome(c, { itemType, id, passed: issues.length === 0, issues })
+    if (issues.length > 0) {
+      return c.json({ error: 'quality_check_failed', requestId: c.get('requestId'), issues }, 400)
+    }
   }
 
+  const { requestReview } = await c.req.json().catch(() => ({ requestReview: undefined }))
+
   const newVersion = item.current_version + 1
-  const patch = {
-    status: 'Published',
-    current_version: newVersion,
-    published_version: newVersion,
-    updated_at: new Date().toISOString(),
-  }
+  const patch =
+    requestReview === true
+      ? { status: 'UnderReview', current_version: newVersion, updated_at: new Date().toISOString() }
+      : {
+          status: 'Published',
+          current_version: newVersion,
+          published_version: newVersion,
+          updated_at: new Date().toISOString(),
+        }
 
   const { data: updated, error: updateError } = await supabase
     .from(TABLE[itemType])
@@ -130,5 +174,8 @@ publishRouter.post('/:itemType/:id', async (c) => {
   const snapshotData = itemType === 'WORKFLOW' ? { ...updated, steps: workflowSteps } : updated
   await recordVersionSnapshot(supabase, itemType, id, newVersion, snapshotData, userId)
 
+  if (requestReview === true) {
+    return c.json({ submittedForReview: { item_type: itemType, id, version: newVersion } })
+  }
   return c.json({ published: { item_type: itemType, id, version: newVersion } })
 })

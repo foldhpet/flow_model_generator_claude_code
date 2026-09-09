@@ -86,5 +86,28 @@ export const actions: Actions = {
 			throw err;
 		}
 		return { success: true };
+	},
+
+	// US-045: anonymous-friendly — accessToken is simply undefined for an
+	// anonymous visitor, and apiRequest omits the Authorization header in
+	// that case, same as every other anonymous marketplace read.
+	report: async ({ request, params, locals, fetch }) => {
+		const itemType = params.itemType as MarketplaceItemType;
+		const form = await request.formData();
+		const reason = String(form.get('reason') ?? '');
+		const detail = String(form.get('detail') ?? '').trim();
+
+		try {
+			await apiRequest(`/api/v1/marketplace/items/${itemType}/${params.id}/report`, {
+				method: 'POST',
+				body: JSON.stringify({ reason, detail: detail || undefined }),
+				accessToken: locals.session?.access_token,
+				fetchFn: fetch
+			});
+		} catch (err) {
+			if (err instanceof ApiError) return fail(err.status, { error: err.message });
+			throw err;
+		}
+		return { reported: true };
 	}
 };

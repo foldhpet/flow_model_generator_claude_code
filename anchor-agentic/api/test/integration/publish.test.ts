@@ -24,10 +24,21 @@ function authedClientWithFrom(fromMock: ReturnType<typeof vi.fn>) {
   }
 }
 
-function post(path: string) {
+function post(path: string, body?: unknown) {
   const app = createApp()
-  return app.request(path, { method: 'POST', headers: { Authorization: 'Bearer whatever' } }, testEnv)
+  const headers: Record<string, string> = { Authorization: 'Bearer whatever' }
+  if (body !== undefined) headers['Content-Type'] = 'application/json'
+  return app.request(
+    path,
+    { method: 'POST', headers, body: body !== undefined ? JSON.stringify(body) : undefined },
+    testEnv,
+  )
 }
+
+const LONG_AGENT_PROMPT =
+  'You are a Business Analyst agent. Draft user stories with clear acceptance criteria for each feature request.'
+const LONG_SKILL_CONTENT =
+  'Step one: gather requirements from the stakeholder and confirm scope boundaries clearly.'
 
 describe('publish routes', () => {
   beforeEach(() => {
@@ -208,7 +219,7 @@ describe('publish routes', () => {
       id: 'agent-1',
       owner_id: USER_ID,
       role_id: 'role-1',
-      system_prompt: 'Be helpful',
+      system_prompt: LONG_AGENT_PROMPT,
       status: 'Published',
       current_version: 2,
       published_version: 2,
@@ -219,10 +230,11 @@ describe('publish routes', () => {
       .fn()
       .mockReturnValueOnce(
         chain({
-          data: { id: 'agent-1', owner_id: USER_ID, system_prompt: 'Be helpful', status: 'Draft', current_version: 1 },
+          data: { id: 'agent-1', owner_id: USER_ID, system_prompt: LONG_AGENT_PROMPT, status: 'Draft', current_version: 1 },
           error: null,
         }),
       ) // agents select
+      .mockReturnValueOnce(chain({ data: null, error: null, count: 1 })) // agent_tasks select
       .mockReturnValueOnce(chain({ data: updatedAgent, error: null })) // agents update
       .mockReturnValueOnce(chain({ data: null, error: null })) // version_snapshots insert
       .mockReturnValueOnce(chain({ data: null, error: null })) // agents update (version bump inside recordVersionSnapshot)
@@ -237,13 +249,86 @@ describe('publish routes', () => {
     expect(fromMock.mock.calls.filter((call) => call[0] === 'agents')).toHaveLength(3)
   })
 
+  it('400s agent_has_no_tasks for an Agent with zero assigned tasks', async () => {
+    const fromMock = vi
+      .fn()
+      .mockReturnValueOnce(
+        chain({
+          data: { id: 'agent-1', owner_id: USER_ID, system_prompt: LONG_AGENT_PROMPT, status: 'Draft', current_version: 1 },
+          error: null,
+        }),
+      ) // agents select
+      .mockReturnValueOnce(chain({ data: null, error: null, count: 0 })) // agent_tasks select
+    createRequestSupabaseClient.mockReturnValue(authedClientWithFrom(fromMock))
+
+    const res = await post('/api/v1/publish/AGENT/agent-1')
+    const body = await res.json<{ error: string }>()
+
+    expect(res.status).toBe(400)
+    expect(body.error).toBe('agent_has_no_tasks')
+  })
+
+  it('400s quality_check_failed for an Agent whose system_prompt is too short', async () => {
+    const fromMock = vi
+      .fn()
+      .mockReturnValueOnce(
+        chain({
+          data: { id: 'agent-1', owner_id: USER_ID, system_prompt: 'Be helpful', status: 'Draft', current_version: 1 },
+          error: null,
+        }),
+      ) // agents select
+      .mockReturnValueOnce(chain({ data: null, error: null, count: 1 })) // agent_tasks select
+    createRequestSupabaseClient.mockReturnValue(authedClientWithFrom(fromMock))
+
+    const res = await post('/api/v1/publish/AGENT/agent-1')
+    const body = await res.json<{ error: string; issues: { code: string }[] }>()
+
+    expect(res.status).toBe(400)
+    expect(body.error).toBe('quality_check_failed')
+    expect(body.issues.map((i) => i.code)).toContain('prompt_too_short')
+  })
+
+  it('requestReview: true submits the item for review instead of publishing, with no published_version bump', async () => {
+    let capturedPatch: Record<string, unknown> | undefined
+    const draftAgent = {
+      id: 'agent-1',
+      owner_id: USER_ID,
+      system_prompt: LONG_AGENT_PROMPT,
+      status: 'Draft',
+      current_version: 1,
+    }
+    const reviewAgent = { ...draftAgent, status: 'UnderReview', current_version: 2 }
+
+    const fromMock = vi
+      .fn()
+      .mockReturnValueOnce(chain({ data: draftAgent, error: null })) // agents select
+      .mockReturnValueOnce(chain({ data: null, error: null, count: 1 })) // agent_tasks select
+      .mockReturnValueOnce({
+        update: (patch: Record<string, unknown>) => {
+          capturedPatch = patch
+          return chain({ data: reviewAgent, error: null })
+        },
+      }) // agents update
+      .mockReturnValueOnce(chain({ data: null, error: null })) // version_snapshots insert
+      .mockReturnValueOnce(chain({ data: null, error: null })) // agents update (version bump inside recordVersionSnapshot)
+    createRequestSupabaseClient.mockReturnValue(authedClientWithFrom(fromMock))
+
+    const res = await post('/api/v1/publish/AGENT/agent-1', { requestReview: true })
+    const body = await res.json<{ submittedForReview: { item_type: string; id: string; version: number } }>()
+
+    expect(res.status).toBe(200)
+    expect(body.submittedForReview).toEqual({ item_type: 'AGENT', id: 'agent-1', version: 2 })
+    expect(capturedPatch).toMatchObject({ status: 'UnderReview', current_version: 2 })
+    expect(capturedPatch).not.toHaveProperty('published_version')
+  })
+
   it('re-publishing an already-Published item advances published_version to match current_version', async () => {
     const updatedSkill = {
       id: 'skill-1',
       owner_id: USER_ID,
       name: 'Shelver',
       description: null,
-      skill_files: [{ path: 'SKILL.md', content: '# Shelver v2' }],
+      skill_files: [{ path: 'SKILL.md', content: LONG_SKILL_CONTENT }],
       status: 'Published',
       current_version: 4,
       published_version: 4,
@@ -257,7 +342,7 @@ describe('publish routes', () => {
           data: {
             id: 'skill-1',
             owner_id: USER_ID,
-            skill_files: [{ path: 'SKILL.md', content: '# Shelver v2' }],
+            skill_files: [{ path: 'SKILL.md', content: LONG_SKILL_CONTENT }],
             status: 'Published',
             current_version: 3,
             published_version: 2,
@@ -275,5 +360,78 @@ describe('publish routes', () => {
 
     expect(res.status).toBe(200)
     expect(body.published).toEqual({ item_type: 'SKILL', id: 'skill-1', version: 4 })
+  })
+
+  it('400s quality_check_failed for a Skill whose combined file content is too short', async () => {
+    createRequestSupabaseClient.mockReturnValue(
+      authedClient(() =>
+        chain({
+          data: {
+            id: 'skill-1',
+            owner_id: USER_ID,
+            skill_files: [{ path: 'SKILL.md', content: 'x' }],
+            status: 'Draft',
+            current_version: 1,
+          },
+          error: null,
+        }),
+      ),
+    )
+
+    const res = await post('/api/v1/publish/SKILL/skill-1')
+    const body = await res.json<{ error: string; issues: { code: string }[] }>()
+
+    expect(res.status).toBe(400)
+    expect(body.error).toBe('quality_check_failed')
+    expect(body.issues.map((i) => i.code)).toContain('prompt_too_short')
+  })
+
+  it('400s quality_check_failed for a Workflow whose description is too short', async () => {
+    const fromMock = vi
+      .fn()
+      .mockReturnValueOnce(
+        chain({
+          data: { id: 'wf-1', owner_id: USER_ID, description: 'short', status: 'Draft', current_version: 1 },
+          error: null,
+        }),
+      ) // workflows select
+      .mockReturnValueOnce(
+        chain({
+          data: [{ order_index: 0, step_type: 'TASK', task_id: 'task-1', agent_id: null, skill_id: null }],
+          error: null,
+        }),
+      ) // workflow_steps select
+      .mockReturnValueOnce(chain({ data: [{ id: 'task-1', status: 'Published' }], error: null })) // tasks status lookup
+    createRequestSupabaseClient.mockReturnValue(authedClientWithFrom(fromMock))
+
+    const res = await post('/api/v1/publish/WORKFLOW/wf-1')
+    const body = await res.json<{ error: string; issues: { code: string }[] }>()
+
+    expect(res.status).toBe(400)
+    expect(body.error).toBe('quality_check_failed')
+    expect(body.issues.map((i) => i.code)).toContain('prompt_too_short')
+  })
+
+  it('400s dangling_step_reference when a step references an UnderReview item', async () => {
+    const fromMock = vi
+      .fn()
+      .mockReturnValueOnce(
+        chain({ data: { id: 'wf-1', owner_id: USER_ID, status: 'Draft', current_version: 1 }, error: null }),
+      ) // workflows select
+      .mockReturnValueOnce(
+        chain({
+          data: [{ order_index: 0, step_type: 'SKILL', task_id: null, agent_id: null, skill_id: 'skill-1' }],
+          error: null,
+        }),
+      ) // workflow_steps select
+      .mockReturnValueOnce(chain({ data: [{ id: 'skill-1', status: 'UnderReview' }], error: null })) // skills status lookup
+    createRequestSupabaseClient.mockReturnValue(authedClientWithFrom(fromMock))
+
+    const res = await post('/api/v1/publish/WORKFLOW/wf-1')
+    const body = await res.json<{ error: string; steps: number[] }>()
+
+    expect(res.status).toBe(400)
+    expect(body.error).toBe('dangling_step_reference')
+    expect(body.steps).toEqual([0])
   })
 })

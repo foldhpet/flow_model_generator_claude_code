@@ -15,6 +15,9 @@
 {#if form?.error}
 	<p role="alert">{form.error}</p>
 {/if}
+{#if form?.reported}
+	<p role="status">Report submitted — thank you. This item is now pending review.</p>
+{/if}
 
 {#if data.item.description}<p>{data.item.description}</p>{/if}
 
@@ -57,6 +60,24 @@
 {/if}
 
 <p>Cloned {data.item.clone_count} times</p>
+
+<h2>Report this item</h2>
+<form method="POST" action="?/report" use:enhance>
+	<label>
+		Reason:
+		<select name="reason" required>
+			<option value="ABUSIVE">Abusive content</option>
+			<option value="BROKEN">Broken / doesn't work</option>
+			<option value="SPAM">Spam</option>
+			<option value="OTHER">Other</option>
+		</select>
+	</label>
+	<label>
+		Details (optional):
+		<textarea name="detail" maxlength="2000"></textarea>
+	</label>
+	<button type="submit">Report</button>
+</form>
 
 {#if data.itemType === 'AGENT'}
 	<h2>Task Assignments</h2>

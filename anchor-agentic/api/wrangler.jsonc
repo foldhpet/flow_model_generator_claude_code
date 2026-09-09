@@ -9,15 +9,12 @@
   }
   // SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY are secrets —
   // set locally via .dev.vars (gitignored) and in prod via `wrangler secret put`.
+  // US-045: per-IP rate limiting for anonymous abuse reports. Uncomment once
+  // `wrangler kv namespace create RATE_LIMIT_KV` has been run and its id filled
+  // in below — rateLimit.ts fails open (no limiting) while this is absent.
   // "kv_namespaces": [
   //   {
-  //     "binding": "MY_KV_NAMESPACE",
-  //     "id": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-  //   }
-  // ],
-  // "kv_namespaces": [
-  //   {
-  //     "binding": "MY_KV_NAMESPACE",
+  //     "binding": "RATE_LIMIT_KV",
   //     "id": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
   //   }
   // ],

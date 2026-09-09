@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { findDanglingSteps, isAgentPublishReady, isSkillPublishReady } from '../../src/publishValidation'
+import {
+  findDanglingSteps,
+  hasAssignedTask,
+  isAgentPublishReady,
+  isSkillPublishReady,
+  isSkillStructurallySound,
+} from '../../src/publishValidation'
 
 describe('isAgentPublishReady', () => {
   it('accepts a non-empty system_prompt', () => {
@@ -61,5 +67,55 @@ describe('findDanglingSteps', () => {
     const steps = [{ order_index: 0, ref_id: 't1' }]
     const statusById = new Map([['t1', 'Draft']])
     expect(findDanglingSteps(steps, statusById)).toEqual([])
+  })
+
+  it('flags a step whose reference is UnderReview', () => {
+    const steps = [{ order_index: 3, ref_id: 't1' }]
+    const statusById = new Map([['t1', 'UnderReview']])
+    expect(findDanglingSteps(steps, statusById)).toEqual([{ order_index: 3, ref_id: 't1' }])
+  })
+})
+
+describe('hasAssignedTask', () => {
+  it('accepts a positive task count', () => {
+    expect(hasAssignedTask(1)).toBe(true)
+  })
+
+  it('rejects a zero task count', () => {
+    expect(hasAssignedTask(0)).toBe(false)
+  })
+})
+
+describe('isSkillStructurallySound', () => {
+  it('accepts well-formed files with unique, safe paths', () => {
+    expect(isSkillStructurallySound([{ path: 'SKILL.md', content: '# x' }])).toEqual([])
+  })
+
+  it('flags a missing path', () => {
+    const issues = isSkillStructurallySound([{ path: '  ', content: 'x' }])
+    expect(issues).toEqual([{ code: 'skill_file_missing_path', message: expect.any(String) }])
+  })
+
+  it('flags an unsafe path (parent traversal)', () => {
+    const issues = isSkillStructurallySound([{ path: '../etc/passwd', content: 'x' }])
+    expect(issues[0].code).toBe('skill_file_unsafe_path')
+  })
+
+  it('flags an unsafe path (leading slash)', () => {
+    const issues = isSkillStructurallySound([{ path: '/etc/passwd', content: 'x' }])
+    expect(issues[0].code).toBe('skill_file_unsafe_path')
+  })
+
+  it('flags a duplicate path', () => {
+    const issues = isSkillStructurallySound([
+      { path: 'SKILL.md', content: 'a' },
+      { path: 'SKILL.md', content: 'b' },
+    ])
+    expect(issues.map((i) => i.code)).toEqual(['skill_file_duplicate_path'])
+  })
+
+  it('flags empty content', () => {
+    const issues = isSkillStructurallySound([{ path: 'SKILL.md', content: '   ' }])
+    expect(issues).toEqual([{ code: 'skill_file_empty_content', message: expect.any(String) }])
   })
 })

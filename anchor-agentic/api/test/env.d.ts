@@ -6,5 +6,7 @@ declare module 'cloudflare:test' {
     RLS_TEST_USER_A_PASSWORD?: string
     RLS_TEST_USER_B_EMAIL?: string
     RLS_TEST_USER_B_PASSWORD?: string
+    RLS_TEST_MODERATOR_EMAIL?: string
+    RLS_TEST_MODERATOR_PASSWORD?: string
   }
 }

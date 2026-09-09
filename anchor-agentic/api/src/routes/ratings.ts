@@ -4,7 +4,11 @@ import { requireAuth } from '../middleware/auth'
 
 export const ratingsRouter = new Hono<AppEnv>()
 
-ratingsRouter.use('*', requireAuth)
+// Scoped to this router's own route path, not '*' — ratingsRouter and
+// reportsRouter are both mounted at the same '/api/v1/marketplace' base in
+// app.ts, and a '*' middleware here would otherwise also match reportsRouter's
+// routes once the two are merged into one routing tree.
+ratingsRouter.use('/items/:itemType/:id/rating', requireAuth)
 
 const MARKETPLACE_ITEM_TYPES = ['AGENT', 'SKILL', 'WORKFLOW'] as const
 type MarketplaceItemType = (typeof MARKETPLACE_ITEM_TYPES)[number]

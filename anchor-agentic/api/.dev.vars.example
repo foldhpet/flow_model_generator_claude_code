@@ -8,3 +8,10 @@ RLS_TEST_USER_A_EMAIL=
 RLS_TEST_USER_A_PASSWORD=
 RLS_TEST_USER_B_EMAIL=
 RLS_TEST_USER_B_PASSWORD=
+
+# Only needed for test/rls/abuseReports.rls.test.ts and
+# test/rls/moderators.rls.test.ts — a third already-registered,
+# already-confirmed account with is_moderator manually set true directly in
+# the test project (no self-service elevation, by design).
+RLS_TEST_MODERATOR_EMAIL=
+RLS_TEST_MODERATOR_PASSWORD=

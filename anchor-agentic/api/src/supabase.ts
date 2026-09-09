@@ -16,10 +16,13 @@ export function createRequestSupabaseClient(c: Context<AppEnv>) {
   })
 }
 
-// Service-role client: bypasses RLS entirely. Used only by the OAuth callback
-// handler (GET /api/v1/github/callback), which has no authenticated user to
-// forward and must authenticate the write via a signed state token instead.
-// Never use this elsewhere — all other routes should use createRequestSupabaseClient.
+// Service-role client: bypasses RLS entirely. Two justified uses so far:
+// the OAuth callback handler (GET /api/v1/github/callback), which has no
+// authenticated user to forward and must authenticate the write via a signed
+// state token instead; and reports.ts's Published -> UnderReview flip, since
+// an anonymous or non-owner/non-moderator reporter has no RLS permission to
+// change item status. Don't add a third use without equal justification —
+// every other route should use createRequestSupabaseClient.
 export function createServiceRoleClient(c: Context<AppEnv>) {
   return createClient(c.env.SUPABASE_URL, c.env.SUPABASE_ANON_KEY, {
     global: {

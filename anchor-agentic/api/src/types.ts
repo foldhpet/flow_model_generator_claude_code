@@ -11,6 +11,7 @@ export type Bindings = {
   GITHUB_TOKEN_ENCRYPTION_KEY: string
   WORKER_SIGNING_SECRET: string
   EXPORT_BUCKET?: R2Bucket
+  RATE_LIMIT_KV?: KVNamespace
 }
 
 export type Variables = {

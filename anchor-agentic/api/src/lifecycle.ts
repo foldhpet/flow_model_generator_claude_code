@@ -8,10 +8,20 @@
 // Role/Task (which have no publish endpoint at all). Published is also a
 // one-way transition: there is no un-publish, so Published -> Draft is
 // rejected too.
+// Epic J: Removed is terminal (no undo — an "unfounded report" is instead
+// handled by dismissing the report while still UnderReview, before an
+// actual removal happens). UnderReview is entered only via publish.ts
+// (US-044's requestReview, or US-045's report-driven flip) and left only via
+// moderation.ts's approve/reject/remove/dismiss — the generic PATCH path
+// must reject every transition into or out of it.
 export function validateStatusTransition(currentStatus: string, nextStatus: string | undefined): string | null {
   if (currentStatus === 'Archived') return 'archived_item_is_terminal'
+  if (currentStatus === 'Removed') return 'removed_item_is_terminal'
+  if (currentStatus === 'UnderReview') return 'use_moderation_endpoint'
   if (nextStatus === undefined || nextStatus === currentStatus) return null
   if (nextStatus === 'Published') return 'use_publish_endpoint'
+  if (nextStatus === 'UnderReview') return 'use_publish_endpoint'
+  if (nextStatus === 'Removed') return 'use_moderation_endpoint'
   if (currentStatus === 'Published' && nextStatus === 'Draft') return 'published_is_one_way'
   if (nextStatus === 'Archived' && currentStatus !== 'Draft') return 'only_draft_can_be_archived'
   return null
